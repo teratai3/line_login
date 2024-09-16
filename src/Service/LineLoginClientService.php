@@ -43,7 +43,7 @@ class LineLoginClientService
     {
         $state = random_int(1000, 9999);
         $this->session->set('line_state', $state);
-        // $this->session->save();
+        $this->session->save();
 
         $config = $this->configFactory->get('line_login.settings');
         $url = self::LINE_EP_AUTHORIZE . '?' . http_build_query([
