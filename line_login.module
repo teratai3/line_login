@@ -1,0 +1,228 @@
+<?php
+
+use Drupal\Core\Field\BaseFieldDefinition;
+use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+
+/**
+ * Implements hook_entity_base_field_info().
+ */
+function line_login_entity_base_field_info(EntityTypeInterface $entity_type)
+{
+    // https://www.reddit.com/r/drupal/comments/rp6xny/change_the_write_destination_between_different/
+    $fields = [];
+
+    // ユーザーエンティかチェック
+    if ($entity_type->id() === 'user') {
+        $fields['line_user_id'] = BaseFieldDefinition::create('string')
+            ->setLabel('LINE User ID')
+            ->setSettings([
+                'max_length' => 255,
+            ])
+            ->setDefaultValue(null)
+            ->setRequired(false);
+        return $fields;
+    }
+}
+
+
+/**
+ * Implements hook_install().
+ */
+function line_login_install()
+{
+    // データベーススキーママネージャを取得
+    $schema = \Drupal::database()->schema();
+    $table = 'users_field_data';
+
+    // テーブルにユニークキーが既に存在しない場合、追加
+    if ($schema->tableExists($table) && !$schema->indexExists($table, 'line_user_id_unique')) {
+        $schema->addUniqueKey($table, 'line_user_id_unique', ['line_user_id']);
+    }
+
+    // https://www.drupal.org/node/3153113
+    $key = \Drupal::service('password_generator')->generate(16);
+    $iv = \Drupal::service('password_generator')->generate(16);
+
+    // 生成したキーとIVをconfigに保存
+    \Drupal::configFactory()->getEditable('line_login.settings')->set('openssl_key', $key)->set('openssl_iv', $iv)->save();
+}
+
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function line_login_form_user_form_alter(&$form, FormStateInterface $form_state, $form_id)
+{
+    if ($form_id === 'user_form') {
+        //編集画面
+        $user = $form_state->getFormObject()->getEntity();
+        $current_user_id = \Drupal::currentUser()->id();
+
+        // 編集しているユーザーのIDが現在ログインしているユーザーのIDと一致しているか確認
+        if ($user->id() != $current_user_id) return;
+
+        $module_path = \Drupal::service('extension.path.resolver')->getPath('module', 'line_login');
+
+        $form['line_login'] = [
+            '#type' => 'fieldset',
+            '#title' => 'LINE関連',
+        ];
+
+        if ($user->hasField('line_user_id') && !$user->get('line_user_id')->isEmpty()) {
+            $form['line_login']['line_disconnect'] = [
+                '#type' => 'submit',
+                '#value' => 'LINEログイン連携を解除する',
+                '#submit' => ['line_login_disconnect'],
+                '#weight' => 99,
+            ];
+        } else {
+            $form['line_login']['line_connect'] = [
+                '#type' => 'submit',
+                '#value' => 'Lineで連携',
+                '#attributes' => [
+                    'class' => ['line-connect-button'],
+                    'style' => 'background: url(' . base_path() . $module_path . '/assets/images/btn_login_alignment.png) no-repeat center center;
+                     background-size: contain; height: 50px; width: 160px; text-indent: -9999px; box-shadow: none; margin:0;',
+                ],
+                '#submit' => ['line_login_connect_submit'],  // コールバック関数を指定
+                '#weight' => 99,
+            ];
+        }
+    }
+}
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function line_login_form_alter(&$form, FormStateInterface $form_state, $form_id)
+{
+    // ログインフォームにカスタムボタンを追加
+    if ($form_id === 'user_login_form') {
+        $module_path = \Drupal::service('extension.path.resolver')->getPath('module', 'line_login');
+
+      
+        // LINE連携用のボタンを追加
+        $form['line_login'] = [
+            '#type' => 'submit',
+            '#value' => 'line_login',
+            '#attributes' => [
+                'class' => ['line-login-button'],
+                'style' => 'background: url(' . base_path() . $module_path . '/assets/images/btn_login.png) no-repeat center center;
+                     background-size: contain; height: 50px; width: 160px; text-indent: -9999px; box-shadow: none; margin:0;border:0;',
+            ],
+            '#submit' => ['line_login_redirect'],  // LINEログイン処理用のコールバック
+            '#weight' => 999, // ボタンの表示順序を調整
+        ];
+
+        // バリデーションのためのカスタムバリデーションハンドラを追加
+        $form['#validate'][] = 'line_login_form_validate';
+        $form['#attached']['library'][] = 'line_login/line_login_js';
+    }
+}
+
+
+/**
+ * カスタムバリデーション
+ */
+function line_login_form_validate(&$form, FormStateInterface $form_state) {
+    // LINEでログインボタンが押されたかどうかを確認
+    $triggering_element = $form_state->getTriggeringElement();
+    if ($triggering_element['#value'] === 'line_login') {
+        $form_state->clearErrors();  // 既存のエラーメッセージをクリア
+        $form['name']['#required'] = false;  // ユーザー名の必須を解除
+        $form['pass']['#required'] = false;  // パスワードの必須を解除
+    }
+}
+
+// LINE接続用のコールバック
+function line_login_connect_submit(array &$form, FormStateInterface $form_state)
+{
+    // ユーザーエンティティを取得
+    $user = $form_state->getFormObject()->getEntity();
+    $current_user_id = \Drupal::currentUser()->id();
+
+    if ($user->id() != $current_user_id) {
+        \Drupal::messenger()->addError("他のユーザーのLINE連携はできません。");
+        return;
+    }
+
+
+    if ($user->hasField('line_user_id') && !$user->get('line_user_id')->isEmpty()) {
+        \Drupal::messenger()->addError("すでに連携されています。");
+        return;
+    }
+
+    $line_login_service = \Drupal::service('line_login.client');
+
+    // リダイレクトURLを設定
+    $redirect_uri = \Drupal::request()->getSchemeAndHttpHost() . '/admin/line_login/callback';
+    $line_login_service->setRedirectUri($redirect_uri);
+
+    try {
+        // LINEログインURLを生成
+        $login_url = $line_login_service->login();
+        // 生成されたログインURLにリダイレクト
+        $response = new RedirectResponse($login_url);
+        $response->send();
+    } catch (\Exception $e) {
+        // エラーメッセージを表示
+        \Drupal::logger('line_login')->error('LINE連携の際にエラーが発生しました: ' . $e->getMessage());
+        \Drupal::messenger()->addError('LINE連携中にエラーが発生しました。管理者にお問い合わせください。');
+    }
+}
+
+// LINE接続解除用のコールバック
+function line_login_disconnect(array &$form, FormStateInterface $form_state)
+{
+    $user = $form_state->getFormObject()->getEntity();
+    $current_user_id = \Drupal::currentUser()->id();
+    if ($user->id() != $current_user_id) {
+        \Drupal::messenger()->addError("他のユーザーのLINE連携は解除出来ません");
+        return;
+    }
+
+
+    if ($user->hasField('line_user_id') && !$user->get('line_user_id')->isEmpty()) {
+        try {
+            // LINEユーザーIDをクリア（フィールドを空にする）
+            $user->set('line_user_id', null);
+            $user->save();
+
+            // 成功メッセージを表示
+            \Drupal::messenger()->addStatus('LINE連携を解除しました。');
+        } catch (\Exception $e) {
+            // エラーメッセージを表示
+            \Drupal::logger('line_login')->error('LINE連携解除中にエラーが発生しました: ' . $e->getMessage());
+            \Drupal::messenger()->addError('LINE連携の解除に失敗しました。');
+        }
+    } else {
+        // 連携が存在しない場合
+        \Drupal::messenger()->addError('LINE連携はすでに解除されています。');
+    }
+}
+
+
+// LINEログイン用のコールバック
+function line_login_redirect(array &$form, FormStateInterface $form_state)
+{
+    $line_login_service = \Drupal::service('line_login.client');
+
+
+    // リダイレクトURLを設定
+    $redirect_uri = \Drupal::request()->getSchemeAndHttpHost() . '/line_login/callback';
+    $line_login_service->setRedirectUri($redirect_uri);
+
+    try {
+        $login_url = $line_login_service->login();
+        $response = new RedirectResponse($login_url);
+        $response->send();
+    } catch (\Exception $e) {
+        // エラーメッセージを表示
+        \Drupal::logger('line_login')->error('LINEログイン利用時エラーが発生しました: ' . $e->getMessage());
+        \Drupal::messenger()->addError('LINEログイン利用時にエラーが発生しました。管理者にお問い合わせください。');
+    }
+}

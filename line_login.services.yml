@@ -1,0 +1,4 @@
+services:
+  line_login.client:
+    class: 'Drupal\line_login\Service\LineLoginClientService'
+    arguments: ['@http_client', '@session', '@request_stack', '@config.factory']

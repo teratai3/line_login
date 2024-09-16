@@ -1,0 +1,24 @@
+line_login.settings:
+  path: "/admin/config/line_login"
+  defaults:
+    _title: "LINEログインの設定"
+    _form: '\Drupal\line_login\Form\LineLoginSettingsForm'
+  requirements:
+    _role: "administrator"
+
+line_login.admin.callback:
+  path: '/admin/line_login/callback'
+  defaults:
+    _controller: '\Drupal\line_login\Controller\Admin\LineLoginController::callback'
+    _title: 'LINE Login Callback'
+  requirements:
+    _user_is_logged_in: 'TRUE' #ログインしている場合のみ
+
+line_login.callback:
+  path: '/line_login/callback'
+  defaults:
+    _controller: '\Drupal\line_login\Controller\LineLoginController::callback'
+    _title: 'LINE Login Callback'
+  requirements:
+    _permission: 'access content'
+    _user_is_logged_in: 'FALSE' #ログインしていない場合

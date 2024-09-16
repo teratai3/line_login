@@ -1,0 +1,4 @@
+line_login_js:
+  version: 1.x
+  js:
+    assets/js/line_login.js: {}

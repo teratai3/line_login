@@ -1,0 +1,5 @@
+name: 'line_login'
+type: module
+description: 'LINEログイン機能を追加します'
+package: Custom
+core_version_requirement: ^10

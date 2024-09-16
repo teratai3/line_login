@@ -1,0 +1,4 @@
+line_login.settings:
+  title: 'LINEログインの設定'
+  parent: system.admin_config_system
+  route_name: line_login.settings
