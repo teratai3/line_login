@@ -1,0 +1,25 @@
+<?php
+
+/**
+ * @file
+ * LINE Login install.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function line_login_install() {
+  // データベーススキーママネージャを取得.
+  $schema = \Drupal::database()->schema();
+  $table = 'users_field_data';
+  // テーブルにユニークキーが既に存在しない場合、追加.
+  if ($schema->tableExists($table) && !$schema->indexExists($table, 'line_user_id_unique')) {
+    $schema->addUniqueKey($table, 'line_user_id_unique', ['line_user_id']);
+  }
+
+  // https://www.drupal.org/node/3153113
+  $key = \Drupal::service('password_generator')->generate(16);
+  $iv = \Drupal::service('password_generator')->generate(16);
+  // 生成したキーとIVをconfigに保存.
+  \Drupal::configFactory()->getEditable('line_login.settings')->set('openssl_key', $key)->set('openssl_iv', $iv)->save();
+}
