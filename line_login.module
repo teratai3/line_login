@@ -47,10 +47,7 @@ function line_login_form_user_form_alter(&$form, FormStateInterface $form_state,
         '#value' => 'Lineで連携',
         '#attributes' => [
           'class' => ['line-connect-button'],
-          'style' => '
-          background: url(' . base_path() . $module_path . '/assets/images/btn_login_alignment.png) no-repeat center center;
-          background-size: contain; height: 50px; width: 160px; text-indent: -9999px; box-shadow: none; margin:0;
-          ',
+          'style' => 'background: url(' . base_path() . $module_path . '/assets/images/btn_login_alignment.png) no-repeat center center;background-size: contain; height: 50px; width: 160px; text-indent: -9999px; box-shadow: none; margin:0;',
         ],
         '#submit' => ['line_login_connect_submit'],
         '#weight' => 99,
@@ -72,11 +69,7 @@ function line_login_form_alter(&$form, FormStateInterface $form_state, $form_id)
       '#value' => 'line_login',
       '#attributes' => [
         'class' => ['line-login-button'],
-        'style' => '
-      background: url(' . base_path() . $module_path . '/assets/images/btn_login.png) no-repeat center center;
-      background-size: contain; height: 50px; width: 160px; text-indent: -9999px; box-shadow: none;
-      margin:0;border:0;
-    ',
+        'style' => 'background: url(' . base_path() . $module_path . '/assets/images/btn_login.png) no-repeat center center;background-size: contain; height: 50px; width: 160px; text-indent: -9999px; box-shadow: none;margin:0;border:0;',
       ],
       '#submit' => ['line_login_redirect'],
       '#weight' => 999,
